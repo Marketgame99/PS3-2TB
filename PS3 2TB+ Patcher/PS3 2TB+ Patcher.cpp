@@ -69,11 +69,69 @@ bool PatchBinary(const string& filename, const vector<uint8_t>& pattern, const v
     return true;
 }
 
+bool PatchString(const string& filename, const string& searchString, const string& replaceString) {
+    // 1. Read the file into memory
+    ifstream file(filename, ios::binary | ios::ate);
+    if (!file.is_open()) return false;
+
+    streamsize size = file.tellg();
+    file.seekg(0, ios::beg);
+    vector<char> buffer(size);
+    if (!file.read(buffer.data(), size)) return false;
+    file.close();
+
+    // 2. Search for the Sony URL
+    auto it = search(buffer.begin(), buffer.end(), searchString.begin(), searchString.end());
+    if (it == buffer.end()) {
+        cout << "[-] Update URL not found in " << filename << endl;
+        return false;
+    }
+
+    size_t foundOffset = distance(buffer.begin(), it);
+    cout << "[+] Update URL found at offset: 0x" << hex << foundOffset << dec << endl;
+
+    // 3. Inject the replacement string
+    for (size_t i = 0; i < replaceString.length(); ++i) {
+        buffer[foundOffset + i] = replaceString[i];
+    }
+
+    // 4. Pad the rest of the original string length with NULL bytes (0x00)
+    for (size_t i = replaceString.length(); i < searchString.length(); ++i) {
+        buffer[foundOffset + i] = 0x00;
+    }
+
+    // 5. Write back to disk
+    ofstream outfile(filename, ios::binary | ios::trunc);
+    if (!outfile.is_open()) return false;
+    outfile.write(buffer.data(), buffer.size());
+    outfile.close();
+
+    cout << "[+] Successfully neutralized update URL in " << filename << "!" << endl;
+    return true;
+}
+
 int main() {
     cout << "========================================" << endl;
     cout << "  PS3 2TB+ Patcher v1.0" << endl;
     cout << "========================================" << endl;
 
+    // The Sony update server URL (You should verify this exact string in a hex editor)
+    string sonyURL = "http://fus01.ps3.update.playstation.net";
+
+    // The dummy URL to trap the update check
+    string dummyURL = "http://127.0.0.1";
+
+    cout << "\n[*] Decrypting update_plugin.sprx..." << endl;
+    RunProcessSilent("scetool.exe -d update_plugin.sprx update_plugin.elf");
+
+    cout << "[*] Patching auto-update URLs..." << endl;
+    PatchString("update_plugin.elf", sonyURL, dummyURL);
+    // You should also run this against vsh.elf just to be safe!
+
+    //PatchString("vsh.elf", sonyURL, dummyURL);
+
+    cout << "[*] Re-encrypting update_plugin.sprx..." << endl;
+    RunProcessSilent("scetool.exe -e --type=SPRX --crypt-type=APP update_plugin.elf update_plugin_patched.sprx");
     // NOP Instruction in PowerPC (60 00 00 00)
     vector<uint8_t> nopPatch = { 0x60, 0x00, 0x00, 0x00 };
 
@@ -90,6 +148,18 @@ int main() {
     // Pattern 2: emer_init 1.5TB Gate (cmpld cr7, r4, r0 -> bgt <fail>)
     vector<uint8_t> emer_pattern = { 0x7F, 0x84, 0x00, 0x40,  // cmpld cr7, r4, r0
                                      0x41, 0x9D, 0x00, 0x14 }; // bgt <fail> (Target)
+
+        /*
+      Pattern 3: emer_init UFS2 minfree reservation (8% -> 1%)
+      Note: This is a placeholder pattern. You MUST verify the exact
+      surrounding instructions in IDA Pro inside the newfs_cfs routine.
+    */
+    vector<uint8_t> minfree_pattern = { 0x38, 0x60, 0x00, 0x08,  // li r3, 8 (Target)
+                                        0x90, 0x7F, 0x01, 0x20,  // stw r3, 0x120(r31) [Store into superblock]
+                                        0x38, 0x80, 0x08, 0x00 }; // li r4, 2048 
+
+    // The patch changes '8' to '1'
+    vector<uint8_t> minfreePatch = { 0x38, 0x60, 0x00, 0x01 }; // li r3, 1
 
     // --- STEP 1: DECRYPT ---
     cout << "\n[*] Decrypting lv2_kernel.self..." << endl;
@@ -115,6 +185,11 @@ int main() {
         cout << "[-] emer_init Patch failed!" << endl; return 1;
     }
 
+    cout << "[*] Scanning and Patching emer_init minfree (8% -> 1%)..." << endl;
+    // Patch offset is 0 bytes (we are overwriting the very first instruction in the pattern)
+    if (!PatchBinary("emer_init.elf", minfree_pattern, minfreePatch, 0)) {
+        cout << "[-] emer_init minfree Patch failed!" << endl; return 1;
+    }
     // --- STEP 3: RE-ENCRYPT ---
     cout << "\n[*] Re-encrypting lv2_kernel.self..." << endl;
     // Note: scetool requires specific flags to re-encrypt CoreOS files properly.
