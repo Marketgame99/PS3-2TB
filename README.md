@@ -1,4 +1,4 @@
-# PS3 4TB Internal HDD Auto-Patcher
+# PS3 2TB+ Internal HDD Auto-Patcher
 
 A C++ automation tool designed to modify core PlayStation 3 firmware files, permanently removing the hardware and software limitations that prevent the use of internal hard drives larger than 1.5 TB. 
 
@@ -13,7 +13,7 @@ By utilizing this tool and repacking a Custom Firmware (CFW) `.PUP`, you can nat
 
 This tool automatically unpacks, hex-patches, and re-encrypts the following bottlenecks:
 
-1. **The 1.5 TB Recovery Gate (`emer_init.self` / `sys_init_osd.self`)**
+1. **The 1.5 TB Recovery Gate (`emer_init.self`)**
    * *The Problem:* Safe Mode contains a hardcoded artificial gate that aborts formatting if a drive exceeds 1536 GiB.
    * *The Patch:* NOPs the `bgt` instruction, allowing the UI to accept 4TB drives.
 2. **The 2 TB LV2 Truncation (`lv2_kernel.self`)**
@@ -31,7 +31,7 @@ This tool automatically unpacks, hex-patches, and re-encrypts the following bott
 * **Windows OS** (The C++ tool utilizes the Win32 API for silent process execution).
 * **scetool.exe** (Must be placed in the same directory as the patcher, along with the `keys` folder).
 * **PS3 PUP Extractor** (To unpack your base Custom Firmware).
-* **MFW Builder / PS3 PUP Builder** (To correctly hash and repack the CoreOS `.PUP`).
+* **PS3 MFW Builder** (To correctly hash and repack the CoreOS `.PUP`).
 * A base Custom Firmware (e.g., Evilnat 4.90 or 4.91).
 
 ## 🚀 Usage Instructions
@@ -39,23 +39,47 @@ This tool automatically unpacks, hex-patches, and re-encrypts the following bott
 ### Step 1: Extract Base Firmware
 1. Use a PUP Extractor to unpack your chosen CFW `PS3UPDAT.PUP`.
 2. Extract `update_ros.tar` to locate **`lv2_kernel.self`**.
-3. Extract `update_files.tar` to locate **`emer_init.self`**, **`sys_init_osd.self`**, and **`update_plugin.sprx`**.
+3. Extract `update_files.tar` to locate **`emer_init.self`** and **`update_plugin.sprx`**.
 
 ### Step 2: Run the Patcher
 1. Place the extracted `.self` and `.sprx` files in the root directory of this tool.
 2. Ensure `scetool.exe` and its `keys` directory are present.
-3. Run `PS3_4TB_Patcher.exe`.
-4. The tool will silently decrypt the files to `.elf`, scan for the required PowerPC assembly byte patterns, inject the patches, and re-encrypt them back to signed PS3 binaries.
+3. Run `PS3_2TB_Patcher.exe`.
+4. The tool will silently decrypt the files, scan for the required byte patterns, inject the patches, and output `_patched` versions of the files.
 
-### Step 3: Format Parameter Adjustment (Fragment Size)
-To prevent the `libfs_utility.sprx` (fsck) RAM exhaustion crash on a 4TB drive, you must ensure the filesystem format utilizes an **8192-byte** fragment size instead of the default 4096-byte size. *(This can be patched in the `newfs_cfs` arguments within `emer_init` during Step 2).*
+### Step 3: Prepare the Patched Files for Injection
+Before using MFW Builder, you must rename the output files back to their original names and place them in a specific folder structure so MFW Builder knows exactly where to inject them.
 
-### Step 4: Repack and Flash
-1. Take your newly generated `_patched.self` files and replace the originals inside the unpacked PUP directories.
-2. Open **MFW Builder**.
-3. Load the modified directory. MFW Builder will automatically recalculate the CoreOS cryptographic hashes.
-4. Build the new `PS3UPDAT.PUP`.
-5. Install the firmware to your PS3 via Safe Mode (Option 6: System Update).
+1. Rename the files:
+   * `lv2_kernel_patched.self` ➔ `lv2_kernel.self`
+   * `emer_init_patched.self` ➔ `emer_init.self`
+   * `update_plugin_patched.sprx` ➔ `update_plugin.sprx`
+2. Create a new folder on your desktop called `Custom_PS3_Files`.
+3. Inside that folder, create the following exact directory structure and place the files inside:
+   * `Custom_PS3_Files/CoreOS/lv2_kernel.self`
+   * `Custom_PS3_Files/dev_flash/sys/internal/emer_init.self`
+   * `Custom_PS3_Files/dev_flash/vsh/module/update_plugin.sprx`
+
+### Step 4: Build the Firmware using MFW Builder
+You cannot just ZIP the files back up. You must use MFW Builder so the PS3's cryptographic CoreOS hashes are correctly recalculated.
+
+1. Open **MFW Builder**.
+2. In the **Original Firmware** field, select your unmodified base CFW `.PUP` (e.g., *Evilnat_4.91.PUP*).
+3. In the **Modified Firmware** field, choose a save location and name for your new file (e.g., *Evilnat_4TB_Patched.PUP*).
+4. On the left sidebar, **uncheck all default tasks** except for the following two:
+   * `Patch CoreOS` (or `Change CoreOS files`)
+   * `Patch custom files` (or `Replace dev_flash files`)
+5. Click on the **Patch CoreOS** task in the sidebar, and point the directory setting to your `Custom_PS3_Files/CoreOS/` folder.
+6. Click on the **Patch custom files** task in the sidebar, and point the directory setting to your `Custom_PS3_Files/dev_flash/` folder.
+7. Click **Build MFW**.
+8. MFW Builder will automatically unpack the base PUP, swap in your patched files, recalculate the secure hashes, and pack it into a pristine `.PUP`.
+
+### Step 5: Format and Install
+1. Put your newly built `PS3UPDAT.PUP` on a FAT32 USB drive (`PS3/UPDATE/PS3UPDAT.PUP`).
+2. Insert your blank 4TB drive into the PS3.
+3. Boot the PS3 into **Safe Mode**.
+4. Select **Option 6: System Update**.
+5. The PS3 will read your patched firmware, bypass the 1.5TB UI gate, format the drive with 1% reserved space, and boot into the XMB utilizing the full 64-bit geometry!
 
 ## 🛑 Troubleshooting: "FATAL ERROR: Pattern Missing"
 
@@ -73,7 +97,8 @@ You must manually verify the new hex pattern for your specific firmware version:
 2. Search for the assembly instructions documented in the source code.
 3. Once found, copy the new Hex Opcode sequence.
 4. Open the `main.cpp` source code of this tool, update the `vector<uint8_t>` hex arrays to match your firmware's specific pattern, and recompile the tool.
+
 ## 🛠️ Compiling the Source
-Open `PS3 2TB+ Patcher.cpp` in Visual Studio or compile via MinGW:
+Open `main.cpp` in Visual Studio or compile via MinGW:
 ```bash
 g++ main.cpp -o PS3_4TB_Patcher.exe -static-libgcc -static-libstdc++
