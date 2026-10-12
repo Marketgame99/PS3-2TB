@@ -74,6 +74,6 @@ You must manually verify the new hex pattern for your specific firmware version:
 3. Once found, copy the new Hex Opcode sequence.
 4. Open the `main.cpp` source code of this tool, update the `vector<uint8_t>` hex arrays to match your firmware's specific pattern, and recompile the tool.
 ## 🛠️ Compiling the Source
-Open `main.cpp` in Visual Studio or compile via MinGW:
+Open `PS3 2TB+ Patcher.cpp` in Visual Studio or compile via MinGW:
 ```bash
 g++ main.cpp -o PS3_4TB_Patcher.exe -static-libgcc -static-libstdc++
