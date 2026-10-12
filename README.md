@@ -57,6 +57,22 @@ To prevent the `libfs_utility.sprx` (fsck) RAM exhaustion crash on a 4TB drive, 
 4. Build the new `PS3UPDAT.PUP`.
 5. Install the firmware to your PS3 via Safe Mode (Option 6: System Update).
 
+## 🛑 Troubleshooting: "FATAL ERROR: Pattern Missing"
+
+If the tool aborts and displays a **FATAL ERROR**, this is a built-in safety mechanism. It means the tool scanned the decrypted `.elf` file and could not find the exact assembly hex bytes required to inject the patch. 
+
+The tool aborts automatically to prevent generating a corrupted kernel that would brick your console.
+
+**Why did this happen?**
+1. **Firmware Version Mismatch (Offset Shifting):** Every time Sony releases a new firmware (e.g., 4.90 vs 4.91), the C++ compiler injects new timestamps and version strings. This shifts the physical location of the code, and sometimes alters the surrounding registers used by the compiler.
+2. **Already Patched:** You may be trying to patch a file that has already been modified.
+
+**How to fix it:**
+You must manually verify the new hex pattern for your specific firmware version:
+1. Open the decrypted `lv2_kernel.elf` or `emer_init.elf` in a disassembler like **IDA Pro** or **Ghidra**.
+2. Search for the assembly instructions documented in the source code.
+3. Once found, copy the new Hex Opcode sequence.
+4. Open the `main.cpp` source code of this tool, update the `vector<uint8_t>` hex arrays to match your firmware's specific pattern, and recompile the tool.
 ## 🛠️ Compiling the Source
 Open `main.cpp` in Visual Studio or compile via MinGW:
 ```bash
